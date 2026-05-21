@@ -131,6 +131,59 @@ def moderationfunc(message):
 
 
 
+
+
+
+def doctor_consultation(input_symptoms, message):
+    
+    print("\n🏥 MediScan AI: Let me ask you some questions...\n")
+    
+    while True:
+        # Ask AI if it needs more info or is ready to diagnose
+        message.append({
+            "role": "user",
+            "content": f"""
+            Based on the conversation so far about these symptoms: {input_symptoms}
+            
+            Do you have enough information to make a diagnosis?
+            
+            If YES → reply with exactly: "READY_TO_DIAGNOSE"
+            If NO → ask the patient one specific follow-up question
+            """
+        })
+        
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=message,
+            temperature=0.7,
+            max_tokens=200,
+        )
+        
+        ai_response = response.choices[0].message.content
+        message.append({"role": "assistant", "content": ai_response})
+        
+        # Check if AI is ready
+        if "READY_TO_DIAGNOSE" in ai_response:
+            print("\n🔍 I have enough information. Analyzing now...\n")
+            break
+        
+        # AI needs more info → ask the question
+        print(f"\n🤖 MediScan: {ai_response}\n")
+        answer = input("You: ")
+        message.append({"role": "user", "content": answer})
+
+
+
+
+
+
+
+
+
+
+
+
+
 """ Function to calculate the number of tokens in the response and check if it exceeds the limit"""
 
 
@@ -243,14 +296,14 @@ def analyze_symptoms(input_symptoms,message):
 
 
 
-input_symptoms = input("Please enter your symptoms: ")
-
+# Get initial symptoms
+input_symptoms = input("\nPlease enter your symptoms: ")
 message.append({"role": "user", "content": input_symptoms})
 
+# Doctor consultation - asks until ready
+doctor_consultation(input_symptoms, message)
 
-
-
-
-response = analyze_symptoms(input_symptoms,message)
-
-print(response)
+# Final diagnosis
+print("\n🔍 Analyzing your complete symptoms...\n")
+response = analyze_symptoms(input_symptoms, message)
+print(f"\n🏥 MediScan: {response}")
