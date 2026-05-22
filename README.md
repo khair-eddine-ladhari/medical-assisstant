@@ -31,7 +31,7 @@
 
 ## 📄 Generated PDF Report
 
-![PDF Report](images/report.png)
+👉 [Click here to view a sample PDF report](YOUR_GOOGLE_DRIVE_LINK)
 
 ---
 
