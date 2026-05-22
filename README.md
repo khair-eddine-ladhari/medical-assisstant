@@ -29,9 +29,9 @@
 
 ---
 
-## 📄 Generated PDF Report
+## 📄 Sample Medical Report
 
-👉 [Click here to view a sample PDF report](YOUR_GOOGLE_DRIVE_LINK)
+👉 [Click here to view a sample PDF report](https://drive.google.com/file/d/1XvrT4hHrpXkCsQKYjpB_jyDpDG7ljehc/view?usp=sharing)
 
 ---
 
@@ -174,7 +174,6 @@ medical-assisstant/
 ├── reports_history.csv   ← patient history (auto-created)
 ├── images/
 │   ├── demo.png
-│   ├── report.png
 │   └── history.png
 └── README.md
 ```
