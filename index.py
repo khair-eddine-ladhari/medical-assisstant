@@ -23,6 +23,7 @@ from openai import OpenAI
 import uuid
 unique_id =str(uuid.uuid4())
 
+import pandas as pd
 
 
 """ Define the system prompt and initial message"""
@@ -75,6 +76,64 @@ function_definition = [
 
 
 """ Function to call the external medical API and fetch disease information based on the symptoms"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""add to the history"""
+
+def save_to_history(symptoms, diseases, response):
+    
+    new_report = {
+        "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "symptoms": symptoms,
+        "diseases_found": ", ".join([d["name"] for d in diseases]),
+        "diagnosis": response
+    }
+    
+    if os.path.exists("reports_history.csv"):
+        df = pd.read_csv("reports_history.csv")
+        df = pd.concat([df, pd.DataFrame([new_report])], ignore_index=True)
+    else:
+        df = pd.DataFrame([new_report])
+    
+    df.to_csv("reports_history.csv", index=False)
+    print("✅ Report saved to history!")
+
+
+
+"""return the history"""
+
+def get_patient_history():
+    if os.path.exists("reports_history.csv"):
+        df = pd.read_csv("reports_history.csv")
+        return df.to_string(index=False)
+    return None
+
+
+
+
+
+
+
+
+
+
 
 
 def get_disease_info(disease_names):
@@ -199,94 +258,77 @@ def calculate_tokens(text):
 
 """ Main function to analyze symptoms, call the language model, and handle the response"""
 
+
+
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_random_exponential(min=10, max=10))
-def analyze_symptoms(input_symptoms,message):
-
-
+def analyze_symptoms(input_symptoms, message):
 
     try:
 
-        if (calculate_tokens(input_symptoms)==False):
-            
-            return "Response is too long, please shorten the input."
-        
-        if (moderationfunc(input_symptoms)==False):
-            return "Response is not safe, please try again."
+        if calculate_tokens(input_symptoms) == False:
+            return "Response is too long, please shorten the input.", []
 
+        if moderationfunc(input_symptoms) == False:
+            return "Response is not safe, please try again.", []
 
-        response=client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        # Force AI to use the function
+        message.append({
+            "role": "user",
+            "content": f"Based on everything we discussed, please now use the get_disease_info function to analyze my symptoms and provide a final diagnosis."
+        })
 
-        messages=message,
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=message,
+            temperature=0.7,
+            max_tokens=1000,
+            top_p=1,
+            tools=function_definition,
+            tool_choice="required",  # ← force function call!
+            user=unique_id
+        )
 
-        temperature=0.7,
-        max_tokens=1000,
-        top_p=1,
-
-
-        tools=function_definition,
-        tool_choice="auto",
-
-        user=unique_id
-        
- 
-        )   
-
-
-
-
-
+        print(f"Finish reason: {response.choices[0].finish_reason}")
 
         if response.choices[0].finish_reason == 'tool_calls':
+            print("✅ AI called a function!")
             function_call = response.choices[0].message.tool_calls[0].function
 
-
-
-    
             if function_call.name == "get_disease_info":
                 disease_names = json.loads(function_call.arguments)["disease_names"]
+                print(f"Diseases to search: {disease_names}")
                 disease_data = get_disease_info(disease_names)
-        
+
                 if disease_data:
-
-                    """add the function call response to the message"""
-
                     message.append(response.choices[0].message)
-
-                    """add the disease data to the message"""
                     message.append({
                         "role": "tool",
                         "tool_call_id": response.choices[0].message.tool_calls[0].id,
-                        "content": json.dumps(disease_data) 
+                        "content": json.dumps(disease_data)
                     })
-                    """   'json.dumps(disease_data)'  to pass it as a string not as a dictionary"""
-                    # Get final response from AI
+
                     final_response = client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
                         messages=message,
                         temperature=0.7,
                         max_tokens=1000,
-                    
                     )
-                    
-                    return(final_response.choices[0].message.content) 
-            
+
+                    return final_response.choices[0].message.content, disease_data
+
                 else:
-                    return("No disease info found")
-
-
-
-
+                    return "No disease info found", []
 
         else:
-            return response.choices[0].message.content
-    
-    
-    
+            print("❌ AI didn't call function!")
+            print(f"Reason: {response.choices[0].finish_reason}")
+            print(f"AI said: {response.choices[0].message.content}")
+            return response.choices[0].message.content, []
 
-  
     except Exception as e:
-        print(f"""Unexpected error: {e}""")
+        print(f"Unexpected error: {e}")
         raise
 
 
@@ -296,14 +338,123 @@ def analyze_symptoms(input_symptoms,message):
 
 
 
+def generate_pdf(symptoms, diseases, diagnosis):
+    
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font("Arial", "B", 20)
+    pdf.cell(200, 15, "MEDISCAN AI - MEDICAL REPORT", ln=True, align="C")
+    
+    # Date
+    pdf.set_font("Arial", "I", 10)
+    pdf.cell(200, 10, f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(5)
+    
+    # Line separator
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    # Symptoms
+    pdf.set_font("Arial", "B", 13)
+    pdf.cell(200, 10, "Symptoms Reported:", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.multi_cell(190, 8, symptoms)
+    pdf.ln(5)
+    
+    # Diseases found
+    pdf.set_font("Arial", "B", 13)
+    pdf.cell(200, 10, "Possible Conditions:", ln=True)
+    pdf.set_font("Arial", size=11)
+    for disease in diseases:
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(200, 8, f"- {disease['name'].upper()}", ln=True)
+        pdf.set_font("Arial", size=10)
+        # Limit description to 300 chars
+        description = disease['description'][:300] + "..."
+        pdf.multi_cell(190, 7, description)
+        pdf.ln(3)
+    
+    # Diagnosis
+    pdf.ln(3)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 13)
+    pdf.cell(200, 10, "AI Diagnosis:", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.multi_cell(190, 8, diagnosis)
+    pdf.ln(5)
+    
+    # Disclaimer
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    pdf.set_font("Arial", "I", 9)
+    pdf.multi_cell(190, 7, 
+        "DISCLAIMER: This report is generated by AI and is NOT a substitute "
+        "for professional medical advice. Always consult a qualified doctor.")
+    
+    # Save
+    filename = f"medical_report_{datetime.now().strftime('%d_%m_%Y_%H%M')}.pdf"
+    pdf.output(filename)
+    return filename
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+history = get_patient_history()
+if history:
+    message.append({
+        "role": "system",
+        "content": f"""
+This patient has visited before. Here are their last visits:
+{history}
+
+Use this history to:
+- Identify recurring symptoms
+- Check if conditions are worsening
+- Provide more personalized diagnosis
+        """
+    })
+
 # Get initial symptoms
 input_symptoms = input("\nPlease enter your symptoms: ")
 message.append({"role": "user", "content": input_symptoms})
 
-# Doctor consultation - asks until ready
+# Doctor consultation
 doctor_consultation(input_symptoms, message)
 
 # Final diagnosis
 print("\n🔍 Analyzing your complete symptoms...\n")
-response = analyze_symptoms(input_symptoms, message)
+response, diseases = analyze_symptoms(input_symptoms, message)
 print(f"\n🏥 MediScan: {response}")
+
+
+
+
+filename = generate_pdf(input_symptoms, diseases, response)
+print(f"\n📄 PDF Report saved: {filename}")
+
+
+
+
+
+# Save to history
+save_to_history(input_symptoms, diseases, response)
